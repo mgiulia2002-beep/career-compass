@@ -4,6 +4,7 @@ import calendar
 import csv
 import io
 import random
+import re
 import textwrap
 
 # ==================================================
@@ -223,6 +224,7 @@ LOCATIONS = [
     "Zurich",
     "Geneva",
     "Luxembourg",
+    "Stockholm",
     "Remote"
 ]
 
@@ -240,6 +242,74 @@ JOB_TYPES = [
     "Sales",
     "Supply Chain"
 ]
+
+KNOWN_COMPANIES = [
+    "Accenture",
+    "Amazon",
+    "Booking.com",
+    "Danone",
+    "Deloitte",
+    "Google",
+    "L'Oréal",
+    "Loreal",
+    "McKinsey",
+    "Microsoft",
+    "Nestlé",
+    "Nestle",
+    "P&G",
+    "PwC",
+    "Spotify",
+    "Unilever"
+]
+
+TITLE_KEYWORDS = [
+    "intern",
+    "analyst",
+    "associate",
+    "consultant",
+    "developer",
+    "engineer",
+    "manager",
+    "trainee",
+    "graduate"
+]
+
+JOB_TYPE_RULES = {
+    "Finance": ["finance", "financial", "accounting", "fp&a", "controlling"],
+    "Marketing": ["marketing", "brand", "social media", "campaign"],
+    "Consulting": ["consulting", "strategy", "management consulting", "business analyst"],
+    "Data Analysis": ["data analyst", "analytics", "sql", "dashboard", "business intelligence"],
+    "Software Engineering": ["software", "developer", "python", "java", "full stack", "backend", "frontend"],
+    "Product Management": ["product manager", "product management", "product owner"],
+    "HR": ["human resources", "people operations", "recruitment", "talent acquisition", " hr "],
+    "Operations": ["operations", "process improvement", "operational"],
+    "Business Development": ["business development", "sales development", "partnerships"],
+    "Sales": ["sales", "account executive", "commercial"],
+    "Supply Chain": ["supply chain", "logistics", "procurement", "demand planning"]
+}
+
+BENEFIT_KEYWORDS = [
+    "vacation",
+    "hybrid",
+    "remote",
+    "meal vouchers",
+    "learning budget",
+    "training",
+    "wellness",
+    "relocation",
+    "health insurance",
+    "flexible working",
+    "free meals",
+    "paid vacation"
+]
+
+DOCUMENT_RULES = {
+    "cover letter": "cover letter",
+    "transcript": "transcript",
+    "portfolio": "portfolio",
+    "github": "GitHub profile",
+    "references": "references"
+}
 
 
 def status_badge(status):
@@ -442,71 +512,112 @@ def application_pdf(app):
     return make_simple_pdf(f"{app['job_title']} - {app['company']}", lines)
 
 
-def autofill_from_link(link):
-    link_lower = link.lower()
+def clean_company_name(company):
+    if company == "Loreal":
+        return "L'Oréal"
+    if company == "Nestle":
+        return "Nestlé"
+    return company
 
-    if "deloitte" in link_lower or "finance" in link_lower:
-        return {
-            "job_title": "Finance Intern",
-            "company": "Deloitte",
-            "location": "Milan",
-            "salary": "€1,000/month",
-            "job_type": "Finance",
-            "description": "Support financial analysis, reporting, Excel modelling, and client presentations.",
-            "benefits": "Training, networking events, meal allowance",
-            "documents": "CV, cover letter, transcript",
-            "notes": "Auto-filled from job link. Review before saving."
-        }
 
-    if "loreal" in link_lower or "marketing" in link_lower:
-        return {
-            "job_title": "Marketing Intern",
-            "company": "L'Oréal",
-            "location": "Paris",
-            "salary": "€1,200/month",
-            "job_type": "Marketing",
-            "description": "Support campaign analysis, brand strategy, social media planning, and market research.",
-            "benefits": "Hybrid work, lunch vouchers, paid vacation",
-            "documents": "CV, cover letter",
-            "notes": "Auto-filled from job link. Review before saving."
-        }
+def detect_job_type(text_lower):
+    for job_type, keywords in JOB_TYPE_RULES.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return job_type
+    return ""
 
-    if "google" in link_lower or "product" in link_lower:
-        return {
-            "job_title": "Product Management Intern",
-            "company": "Google",
-            "location": "Dublin",
-            "salary": "€1,800/month",
-            "job_type": "Product Management",
-            "description": "Support product teams with user research, feature prioritization, and product performance analysis.",
-            "benefits": "Free meals, wellness support, learning budget",
-            "documents": "CV, portfolio, transcript",
-            "notes": "Auto-filled from job link. Review before saving."
-        }
 
-    if "microsoft" in link_lower or "software" in link_lower:
-        return {
-            "job_title": "Software Engineering Intern",
-            "company": "Microsoft",
-            "location": "Berlin",
-            "salary": "€1,700/month",
-            "job_type": "Software Engineering",
-            "description": "Work with engineering teams to build, test, and improve software products.",
-            "benefits": "Remote flexibility, mentorship, learning budget",
-            "documents": "CV, GitHub profile, transcript",
-            "notes": "Auto-filled from job link. Review before saving."
-        }
+def detect_company(text):
+    text_lower = text.lower()
+    for company in KNOWN_COMPANIES:
+        if company.lower() in text_lower:
+            return clean_company_name(company)
+    return ""
+
+
+def detect_location(text):
+    text_lower = text.lower()
+    for location in [loc for loc in LOCATIONS if loc != "All"]:
+        if location.lower() in text_lower:
+            return location
+    return ""
+
+
+def detect_job_title(text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    # LinkedIn job titles are commonly near the top of the copied text.
+    for line in lines[:15]:
+        line_lower = line.lower()
+        if any(keyword in line_lower for keyword in TITLE_KEYWORDS) and len(line) <= 90:
+            return line
+
+    # Fallback: look for common title phrases anywhere in the description.
+    title_patterns = [
+        r"([A-Z][A-Za-z&/\- ]+ Intern)",
+        r"([A-Z][A-Za-z&/\- ]+ Analyst)",
+        r"([A-Z][A-Za-z&/\- ]+ Associate)",
+        r"([A-Z][A-Za-z&/\- ]+ Engineer)",
+        r"([A-Z][A-Za-z&/\- ]+ Developer)",
+    ]
+
+    for pattern in title_patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+
+    return ""
+
+
+def detect_salary(text):
+    salary_patterns = [
+        r"([€£$]\s?\d[\d,\.]*\s*(?:/month|per month|/year|per year|monthly|yearly)?)",
+        r"(CHF\s?\d[\d,\.]*\s*(?:/month|per month|/year|per year|monthly|yearly)?)",
+        r"(\d[\d,\.]*\s*(?:EUR|GBP|USD|CHF)\s*(?:/month|per month|/year|per year|monthly|yearly)?)"
+    ]
+
+    for pattern in salary_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def detect_benefits(text_lower):
+    found = [benefit for benefit in BENEFIT_KEYWORDS if benefit in text_lower]
+    return ", ".join(found)
+
+
+def detect_documents(text_lower):
+    documents = ["CV"]
+
+    for keyword, document_name in DOCUMENT_RULES.items():
+        if keyword in text_lower and document_name not in documents:
+            documents.append(document_name)
+
+    return ", ".join(documents)
+
+
+def extract_job_info_from_text(job_text, link):
+    """
+    Extracts job information from text that the user manually pastes from a job post.
+    This function does not scrape LinkedIn; it analyzes the text provided by the user.
+    """
+    cleaned_text = job_text.strip()
+    text_lower = f" {cleaned_text.lower()} "
 
     return {
-        "job_title": "Strategy Intern",
-        "company": "PwC",
-        "location": "Rome",
-        "salary": "€1,100/month",
-        "job_type": "Consulting",
-        "description": "Support strategy consultants with market research, competitor analysis, and business presentations.",
-        "benefits": "Hybrid work, training, meal vouchers",
-        "documents": "CV, cover letter",
-        "notes": "Auto-filled from job link. Review before saving."
+        "job_title": detect_job_title(cleaned_text),
+        "company": detect_company(cleaned_text),
+        "location": detect_location(cleaned_text),
+        "salary": detect_salary(cleaned_text),
+        "job_type": detect_job_type(text_lower),
+        "description": cleaned_text,
+        "benefits": detect_benefits(text_lower),
+        "documents": detect_documents(text_lower),
+        "notes": "Auto-filled from pasted job description. Please review before saving.",
+        "link": link
     }
 
 
@@ -1080,12 +1191,27 @@ elif page == "Applications":
 
     with tab2:
         st.subheader("Add New Application")
+        st.info(
+            "Paste the LinkedIn job URL and the job description text. The app will extract fields from the text you paste, then you can review and edit them before saving."
+        )
 
         pasted_link = st.text_input("Paste LinkedIn or job application link")
 
-        if st.button("Auto-fill from Job Link"):
-            st.session_state.autofill = autofill_from_link(pasted_link)
-            st.success("Information extracted. Please review and edit before saving.")
+        pasted_job_text = st.text_area(
+            "Paste the job description text from LinkedIn",
+            height=220,
+            help="Open the job post, copy the visible job description text, and paste it here."
+        )
+
+        if st.button("Auto-fill from Job Description"):
+            if not pasted_job_text.strip():
+                st.warning("Please paste the job description text first.")
+            else:
+                st.session_state.autofill = extract_job_info_from_text(
+                    pasted_job_text,
+                    pasted_link
+                )
+                st.success("Information extracted. Please review and edit before saving.")
 
         autofill = st.session_state.get("autofill", {})
 
@@ -1099,20 +1225,23 @@ elif page == "Applications":
             priority = c2.selectbox("Priority", PRIORITIES)
 
             deadline = c1.date_input("Closest Deadline", value=date.today() + timedelta(days=7))
-            location = c2.selectbox(
-                "Location",
-                [loc for loc in LOCATIONS if loc != "All"],
-                index=0
-            )
+
+            location_options = [loc for loc in LOCATIONS if loc != "All"]
+            autofill_location = autofill.get("location", "")
+            location_index = location_options.index(autofill_location) if autofill_location in location_options else 0
+            location = c2.selectbox("Location", location_options, index=location_index)
 
             salary = c1.text_input("Salary", value=autofill.get("salary", ""))
-            job_type = c2.selectbox(
-                "Job Type",
-                [job for job in JOB_TYPES if job != "All"],
-                index=0
-            )
 
-            link = st.text_input("LinkedIn / Application Link", value=pasted_link)
+            job_type_options = [job for job in JOB_TYPES if job != "All"]
+            autofill_job_type = autofill.get("job_type", "")
+            job_type_index = job_type_options.index(autofill_job_type) if autofill_job_type in job_type_options else 0
+            job_type = c2.selectbox("Job Type", job_type_options, index=job_type_index)
+
+            link = st.text_input(
+                "LinkedIn / Application Link",
+                value=autofill.get("link", pasted_link)
+            )
 
             cv_options = [cv["name"] for cv in st.session_state.cvs]
             cv_used = st.selectbox("CV Used", cv_options)
