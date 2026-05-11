@@ -1788,7 +1788,6 @@ elif page == "Settings":
     st.checkbox("Enable deadline reminders", value=True)
     st.checkbox("Enable motivational messages", value=True)
     st.checkbox("Enable calendar notifications", value=True)
-    st.checkbox("Use rejection history to improve suggestions", value=True)
     st.checkbox("Show salary information when available", value=True)
     st.checkbox("Open applications through LinkedIn links", value=True)
 
